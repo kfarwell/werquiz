@@ -1,0 +1,67 @@
+fn conf_enable_quiz {
+    enable_quiz=yes
+    conf_enable_app werquiz
+    groups_allowed_quiz_participate=$*
+    groups_allowed_quiz_admin=admin
+}
+
+fn werquiz_init {
+    _status=()
+    werquiz_dir=$sitedir/_werc/quiz
+    mkdir -m 775 -p $werquiz_dir
+    mkdir -m 775 -p $werquiz_dir/users
+
+    if(! ~ $#enable_quiz 0) {
+        if(~ $req_path /quiz) {
+            handler_body_main=(tpl_handler `{get_lib_file werquiz/quiz.tpl apps/werquiz/quiz.tpl})
+            ll_add handlers_body_head echo '<h1>Quiz</h1>'
+            if(check_user $groups_allowed_quiz_participate) {
+                if(~ 1 $#post_arg_werquiz_answer)
+                    save_answer
+            }
+            if not
+                notify_errors=($notify_errors 'To participate you need to <a href="/_users/login">login</a> first.')
+        }
+
+        if(~ $req_path /admin) {
+            handler_body_main=(tpl_handler `{get_lib_file werquiz/admin.tpl apps/werquiz/admin.tpl})
+            if(check_user $groups_allowed_quiz_admin) {
+                if(~ 1 $#post_arg_werquiz_admin_submit)
+                    save_question
+            }
+            if not
+                notify_errors=($notify_errors 'To use this you need to <a href="/_users/login">login</a> first (and be an admin).')
+        }
+
+        if(~ $req_path /master) {
+            handler_body_main=(tpl_handler `{get_lib_file werquiz/master.tpl apps/werquiz/master.tpl})
+        }
+    }
+}
+
+fn save_answer {
+    if(! test -f $werquiz_dir/winner) {
+        if(~ $post_arg_werquiz_answer `{cat $werquiz_dir/answer}) {
+            if(! test -f $werquiz_dir/users/$logged_user) echo 0 > $werquiz_dir/users/$logged_user
+            score=`{cat $werquiz_dir/users/$logged_user | awk 'echo $1++'}
+            echo $score > $werquiz_dir/users/$logged_user
+            
+            notify_success=($notify_success 'Correct! '$logged_user' now has '$score' points.')
+            echo $logged_user > $werquiz_dir/winner
+        }
+        if not
+            notify_errors=($notify_errors 'Incorrect! Try again?')
+    }
+    if not
+        notify_errors=($notify_errors 'Too slow! '`{cat $werquiz_dir/winner}^' won with answer '`{cat $werquiz_dir/answer}^'.')
+}
+
+fn save_question {
+    echo $post_arg_werquiz_admin_question > $werquiz_dir/question
+    echo $post_arg_werquiz_admin_q1 > $werquiz_dir/q1
+    echo $post_arg_werquiz_admin_q2 > $werquiz_dir/q2
+    echo $post_arg_werquiz_admin_q3 > $werquiz_dir/q3
+    echo $post_arg_werquiz_admin_q4 > $werquiz_dir/q4
+    echo $post_arg_werquiz_admin_answer > $werquiz_dir/answer
+    rm $werquiz_dir/winner
+}
